@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, PartialEq)]
-enum Color {
+pub(crate) enum Color {
     White,
     Black,
 }
@@ -30,7 +30,7 @@ enum Piece {
     BlackKing,
 }
 
-enum GameResult {
+pub(crate) enum GameResult {
     Draw,
     WhiteWin,
     BlackWin,

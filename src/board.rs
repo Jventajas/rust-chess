@@ -1,4 +1,4 @@
-struct Board {
+pub(crate) struct Board {
     white_pawns: u64,
     white_knights: u64,
     white_bishops: u64,
