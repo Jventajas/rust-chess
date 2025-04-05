@@ -1,3 +1,4 @@
+
 pub(crate) struct Board {
     white_pawns: u64,
     white_knights: u64,
@@ -20,7 +21,7 @@ pub(crate) struct Board {
 
 impl Board {
 
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             white_pawns: 0x000000000000FF00,
             white_knights: 0x0000000000000042,
@@ -41,5 +42,6 @@ impl Board {
             en_passant_square: None,
         }
     }
+
 
 }
