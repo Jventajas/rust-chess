@@ -5,7 +5,7 @@ enum Color {
 }
 
 #[derive(Clone, Copy)]
-enum PieceType {
+pub(crate) enum PieceType {
     Pawn,
     Knight,
     Bishop,
