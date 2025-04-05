@@ -1,3 +1,3 @@
-struct Move {
+pub(crate) struct Move {
 
 }
