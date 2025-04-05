@@ -15,8 +15,6 @@ struct Game {
 
 impl Game {
 
-
-
     fn get_game_result(&self) -> &Option<GameResult> {
         &self.result
     }
