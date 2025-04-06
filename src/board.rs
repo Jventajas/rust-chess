@@ -16,7 +16,7 @@ pub(crate) struct Board {
     white_queenside_castling: bool,
     black_kingside_castling: bool,
     black_queenside_castling: bool,
-    en_passant_square: Option<u8>,
+    pub(crate) en_passant_square: Option<u8>,
 }
 
 impl Board {
@@ -49,6 +49,13 @@ impl Board {
     }
 
     pub(crate) fn black_pieces(&self) -> u64 {
+        self.black_pawns | self.black_rooks | self.black_knights |
+        self.black_bishops | self.black_queen | self.black_king
+    }
+
+    pub(crate) fn all_pieces(&self) -> u64 {
+        self.white_pawns | self.white_rooks | self.white_knights |
+        self.white_bishops | self.white_queen | self.white_king |
         self.black_pawns | self.black_rooks | self.black_knights |
         self.black_bishops | self.black_queen | self.black_king
     }

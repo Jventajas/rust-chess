@@ -1,6 +1,6 @@
 use crate::board::Board;
 use crate::move_::Move;
-use crate::types::Color;
+use crate::types::{Color, PieceType};
 
 const KING_MOVES: [u64; 64] = {
     let mut moves = [0u64; 64];
@@ -58,6 +58,68 @@ const KNIGHT_MOVES: [u64; 64] = {
         moves[sq] |= (bit >> 10) & !0xC0C0C0C0C0C0C0C0;
     }
     moves
+};
+
+// Forward push moves only (no captures)
+const WHITE_PAWN_PUSHES: [u64; 64] = {
+    let mut moves = [0u64; 64];
+    for sq in 0..64 {
+        let bit = 1u64 << sq;
+
+        // Single push (one square forward)
+        moves[sq] |= bit << 8;
+
+        // Double push (only from rank 2)
+        if sq >= 8 && sq < 16 {
+            moves[sq] |= bit << 16;
+        }
+    }
+    moves
+};
+
+const BLACK_PAWN_PUSHES: [u64; 64] = {
+    let mut moves = [0u64; 64];
+    for sq in 0..64 {
+        let bit = 1u64 << sq;
+
+        // Single push (one square forward)
+        moves[sq] |= bit >> 8;
+
+        // Double push (only from rank 7)
+        if sq >= 48 && sq < 56 {
+            moves[sq] |= bit >> 16;
+        }
+    }
+    moves
+};
+
+// Diagonal attack moves only
+const WHITE_PAWN_ATTACKS: [u64; 64] = {
+    let mut attacks = [0u64; 64];
+    for sq in 0..64 {
+        let bit = 1u64 << sq;
+        if sq % 8 != 0 {  // Not on A-file
+            attacks[sq] |= bit << 7;  // Attack left
+        }
+        if sq % 8 != 7 {  // Not on H-file
+            attacks[sq] |= bit << 9;  // Attack right
+        }
+    }
+    attacks
+};
+
+const BLACK_PAWN_ATTACKS: [u64; 64] = {
+    let mut attacks = [0u64; 64];
+    for sq in 0..64 {
+        let bit = 1u64 << sq;
+        if sq % 8 != 7 {  // Not on H-file
+            attacks[sq] |= bit >> 7;  // Attack left
+        }
+        if sq % 8 != 0 {  // Not on A-file
+            attacks[sq] |= bit >> 9;  // Attack right
+        }
+    }
+    attacks
 };
 
 
@@ -162,13 +224,125 @@ impl MoveValidator {
         moves
     }
 
+    fn get_pseudo_legal_pawn_moves(&self, board: &Board, color: Color) -> Vec<Move> {
+        // Get pawns for the current color
+        let pawns_bitboard = match color {
+            Color::White => board.white_pawns,
+            Color::Black => board.black_pawns,
+        };
+
+        // Get the bitboard of all pieces
+        let all_pieces = board.all_pieces();
+        let empty_squares = !all_pieces;
+
+        // Get the bitboard of opponent pieces
+        let opponent_pieces = match color {
+            Color::White => board.black_pieces(),
+            Color::Black => board.white_pieces(),
+        };
+
+        let mut moves = Vec::new();
+        let mut remaining_pawns = pawns_bitboard;
+
+        // Define promotion ranks
+        let promotion_rank = match color {
+            Color::White => 0xFF00000000000000, // 8th rank
+            Color::Black => 0x00000000000000FF, // 1st rank
+        };
+
+        // Process each pawn
+        while remaining_pawns != 0 {
+            let square = remaining_pawns.trailing_zeros() as u8;
+            remaining_pawns &= !(1u64 << square);
+
+            // Get potential push moves for this pawn
+            let potential_pushes = match color {
+                Color::White => WHITE_PAWN_PUSHES[square as usize],
+                Color::Black => BLACK_PAWN_PUSHES[square as usize],
+            };
+
+            // Get potential attack moves for this pawn
+            let potential_attacks = match color {
+                Color::White => WHITE_PAWN_ATTACKS[square as usize],
+                Color::Black => BLACK_PAWN_ATTACKS[square as usize],
+            };
+
+            // Initialize valid moves bitboard
+            let mut valid_moves = 0u64;
+
+            // Process pushes
+            // Single push is valid if the target square is empty
+            let single_push = match color {
+                Color::White => (1u64 << square) << 8,
+                Color::Black => (1u64 << square) >> 8,
+            };
+
+            if (single_push & empty_squares) != 0 {
+                valid_moves |= single_push;
+
+                // Double push is valid if the pawn is on starting rank and both squares ahead are empty
+                let double_push = match color {
+                    Color::White => single_push << 8,
+                    Color::Black => single_push >> 8,
+                };
+
+                // Check if pawn is on starting rank
+                let is_on_starting_rank = match color {
+                    Color::White => square >= 8 && square < 16, // 2nd rank
+                    Color::Black => square >= 48 && square < 56, // 7th rank
+                };
+
+                if is_on_starting_rank && (double_push & empty_squares) != 0 {
+                    valid_moves |= double_push;
+                }
+            }
+
+            // Process normal captures - can only capture opponent pieces
+            valid_moves |= potential_attacks & opponent_pieces;
+
+            // Process en passant captures
+            if let Some(ep_square) = board.en_passant_square {
+                let ep_bitboard = 1u64 << ep_square;
+
+                // Check if this pawn can capture en passant
+                if (potential_attacks & ep_bitboard) != 0 {
+                    valid_moves |= ep_bitboard;
+                }
+            }
+
+            // Convert valid moves to a list of Move objects
+            let dest_squares = self.bitboard_to_squareset(valid_moves);
+
+            for dest in dest_squares {
+                // Check if this is a promotion move
+                let is_promotion = (1u64 << dest) & promotion_rank != 0;
+
+                // Check if this is an en passant capture
+                let is_en_passant = board.en_passant_square.map_or(false, |ep| ep == dest);
+
+                if is_promotion {
+                    // Generate separate moves for each promotion piece type
+                    for promotion_piece in [
+                        Some(PieceType::Queen),
+                        Some(PieceType::Rook),
+                        Some(PieceType::Bishop),
+                        Some(PieceType::Knight),
+                    ] {
+                        moves.push(Move::new(square, dest, promotion_piece, is_en_passant));
+                    }
+                } else {
+                    // Regular move or en passant
+                    moves.push(Move::new(square, dest, None, is_en_passant));
+                }
+            }
+        }
+
+        moves
+    }
 
     fn bitboard_to_squareset(&self, bitboard: u64) -> Vec<u8> {
         (0..64).filter(|&i| (bitboard & (1u64 << i)) != 0).collect()
     }
-
-
-
 
 
 }
