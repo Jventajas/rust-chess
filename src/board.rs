@@ -42,6 +42,15 @@ impl Board {
             en_passant_square: None,
         }
     }
+    
+    pub(crate) fn white_pieces(&self) -> u64 {
+        self.white_pawns | self.white_rooks |self.white_knights | 
+        self.white_bishops | self.white_queen | self.white_king
+    }
 
+    pub(crate) fn black_pieces(&self) -> u64 {
+        self.black_pawns | self.black_rooks | self.black_knights |
+        self.black_bishops | self.black_queen | self.black_king
+    }
 
 }
