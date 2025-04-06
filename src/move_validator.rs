@@ -61,7 +61,6 @@ impl MoveValidator {
         Vec::new()
     }
 
-
     fn get_pseudo_legal_king_moves(&self, board: &Board, color: Color) -> Vec<Move> {
         let bitboard = match color {
             Color::White => { board.white_king }
@@ -86,6 +85,21 @@ impl MoveValidator {
             })
             .collect()
     }
+
+    fn get_pseudo_legal_knight_moves(&self, board: &Board, color: Color) -> Vec<Move> {
+        Vec::new()
+    }
+
+
+
+
+
+
+
+
+
+
+
 
     fn bitboard_to_squareset(&self, bitboard: u64) -> Vec<u8> {
         (0..64).filter(|&i| (bitboard & (1u64 << i)) != 0).collect()
