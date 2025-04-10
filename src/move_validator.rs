@@ -122,6 +122,69 @@ const BLACK_PAWN_ATTACKS: [u64; 64] = {
     attacks
 };
 
+// North rays (upward movement)
+const NORTH_RAYS: [u64; 64] = {
+    let mut rays = [0u64; 64];
+    for sq in 0..64 {
+        let mut ray = 0u64;
+        let mut bit = 1u64 << sq;
+        for _ in 0..7 {
+            bit = bit << 8; // Move up one rank
+            ray |= bit;
+        }
+        rays[sq] = ray;
+    }
+    rays
+};
+
+// South rays (downward movement)
+const SOUTH_RAYS: [u64; 64] = {
+    let mut rays = [0u64; 64];
+    for sq in 0..64 {
+        let mut ray = 0u64;
+        let mut bit = 1u64 << sq;
+        for _ in 0..7 {
+            bit = bit >> 8; // Move down one rank
+            ray |= bit;
+        }
+        rays[sq] = ray;
+    }
+    rays
+};
+
+// East rays (rightward movement)
+const EAST_RAYS: [u64; 64] = {
+    let mut rays = [0u64; 64];
+    for sq in 0..64 {
+        let mut ray = 0u64;
+        let mut bit = 1u64 << sq;
+        let file = sq % 8;
+        for _ in 0..(7 - file) { // Stop at the H file
+            bit = bit << 1; // Move right one file
+            ray |= bit;
+        }
+        rays[sq] = ray;
+    }
+    rays
+};
+
+// West rays (leftward movement)
+const WEST_RAYS: [u64; 64] = {
+    let mut rays = [0u64; 64];
+    for sq in 0..64 {
+        let mut ray = 0u64;
+        let mut bit = 1u64 << sq;
+        let file = sq % 8;
+        for _ in 0..file { // Stop at the A file
+            bit = bit >> 1; // Move left one file
+            ray |= bit;
+        }
+        rays[sq] = ray;
+    }
+    rays
+};
+
+
 
 pub(crate) struct MoveValidator {
 
@@ -144,10 +207,6 @@ impl MoveValidator {
 
     pub(crate) fn is_move_legal(&self, board: &Board, move_: &Move) -> bool {
         false
-    }
-
-    fn get_pseudo_legal_moves(&self, board: &Board, color: Color) -> Vec<Move> {
-        Vec::new()
     }
 
     fn get_pseudo_legal_king_moves(&self, board: &Board, color: Color) -> Vec<Move> {
@@ -339,6 +398,119 @@ impl MoveValidator {
 
         moves
     }
+
+    fn get_pseudo_legal_rook_moves(&self, board: &Board, color: Color) -> Vec<Move> {
+        let mut moves = Vec::new();
+
+        // Get the appropriate rook bitboard and enemy pieces based on color
+        let (mut rooks, enemy_pieces) = match color {
+            Color::White => (board.white_rooks, board.black_pieces()),
+            Color::Black => (board.black_rooks, board.white_pieces()),
+        };
+
+        let all_pieces = board.all_pieces();
+
+        // Iterate through each rook position
+        while rooks != 0 {
+            let from = rooks.trailing_zeros() as u8;
+            rooks &= rooks - 1; // Clear the least significant bit
+
+            // Generate moves for each ray direction (north, south, east, west)
+            for &ray in &[
+                NORTH_RAYS[from as usize],
+                SOUTH_RAYS[from as usize],
+                EAST_RAYS[from as usize],
+                WEST_RAYS[from as usize]
+            ] {
+                self.add_ray_moves(ray, all_pieces, enemy_pieces, from, &mut moves);
+            }
+        }
+
+        moves
+    }
+
+    // Helper method to add moves along a ray
+    fn add_ray_moves(&self, ray: u64, all_pieces: u64, enemy_pieces: u64, from: u8, moves: &mut Vec<Move>) {
+        // Find blockers along this ray
+        let blockers = ray & all_pieces;
+
+        if blockers == 0 {
+            // No blockers - add all squares along the ray as quiet moves
+            self.add_moves_to_empty_squares(ray, from, moves);
+            return;
+        }
+
+        // Find the first blocker in the ray
+        let first_blocker_index = self.find_first_blocker_index(ray, blockers);
+        if first_blocker_index >= 64 {
+            return; // No valid blocker found (shouldn't happen if blockers != 0)
+        }
+
+        let first_blocker = 1u64 << first_blocker_index;
+
+        // Add moves to all squares before the first blocker
+        let squares_before_blocker = 0u64.wrapping_sub(first_blocker);
+        let quiet_moves = ray & !(first_blocker | (ray & squares_before_blocker));
+
+        self.add_moves_to_empty_squares(quiet_moves, from, moves);
+
+        // If the first blocker is an enemy piece, add a capture move
+        if (first_blocker & enemy_pieces) != 0 {
+            moves.push(Move::new(from, first_blocker_index as u8, None, false));
+        }
+    }
+
+    // Helper method to find the index of the first blocker on a ray
+    fn find_first_blocker_index(ray: u64, blockers: u64, reference_sq: u8) -> u32 {
+        let ray_with_blockers = ray & blockers;
+
+        // All moves northward go to higher square indices (e.g., from 10 -> 18, 26, etc.)
+        // whereas southward moves go to lower indices (e.g., from 55 -> 47, 39, etc.)
+        if reference_sq < ray_with_blockers.trailing_zeros() as u8 {
+            // Ray direction is towards higher indices (e.g., North or East)
+            ray_with_blockers.trailing_zeros()
+        } else {
+            // Ray direction is towards lower indices (e.g., South or West)
+            63 - ray_with_blockers.leading_zeros()
+        }
+    }
+
+    // Helper method to add moves to all empty squares on a bitboard
+    fn add_moves_to_empty_squares(&self, squares: u64, from: u8, moves: &mut Vec<Move>) {
+        let mut dest_squares = squares;
+        while dest_squares != 0 {
+            let to = dest_squares.trailing_zeros() as u8;
+            moves.push(Move::new(from, to, None, false));
+            dest_squares &= dest_squares - 1; // Clear the least significant bit
+        }
+    }
+
+    fn get_pseudo_legal_moves(&self, board: &Board, color: Color) -> Vec<Move> {
+        let mut moves = Vec::new();
+
+        // Add pawn moves
+        moves.extend(self.get_pseudo_legal_pawn_moves(board, color));
+
+        // Add knight moves
+        moves.extend(self.get_pseudo_legal_knight_moves(board, color));
+
+        // Add rook moves
+        moves.extend(self.get_pseudo_legal_rook_moves(board, color));
+
+        // Add king moves
+        moves.extend(self.get_pseudo_legal_king_moves(board, color));
+
+        // TODO: Add bishop and queen moves
+
+        moves
+    }
+
+
+
+
+
+
+
 
     fn bitboard_to_squareset(&self, bitboard: u64) -> Vec<u8> {
         (0..64).filter(|&i| (bitboard & (1u64 << i)) != 0).collect()
