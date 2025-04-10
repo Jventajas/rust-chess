@@ -566,6 +566,41 @@ impl MoveValidator {
         }
     }
 
+    fn get_pseudo_legal_queen_moves(&self, board: &Board, color: Color) -> Vec<Move> {
+        let mut moves = Vec::new();
+
+        // Select the appropriate queen bitboard and enemy pieces based on color
+        let (mut queens, enemy_pieces) = match color {
+            Color::White => (board.white_queens, board.black_pieces()),
+            Color::Black => (board.black_queens, board.white_pieces()),
+        };
+
+        let all_pieces = board.all_pieces();
+
+        // Iterate through each queen position
+        while queens != 0 {
+            let from = queens.trailing_zeros() as u8;
+            queens &= queens - 1; // Clear the least significant set bit
+
+            // Queen combines rook and bishop moves
+            for &ray in &[
+                NORTH_RAYS[from as usize],
+                SOUTH_RAYS[from as usize],
+                EAST_RAYS[from as usize],
+                WEST_RAYS[from as usize],
+                NORTH_EAST_RAYS[from as usize],
+                NORTH_WEST_RAYS[from as usize],
+                SOUTH_EAST_RAYS[from as usize],
+                SOUTH_WEST_RAYS[from as usize],
+            ] {
+                self.add_ray_moves(ray, all_pieces, enemy_pieces, from, &mut moves);
+            }
+        }
+
+        moves
+    }
+
+
     // Helper method to find the index of the first blocker on a ray
     fn find_first_blocker_index(ray: u64, blockers: u64, reference_sq: u8) -> u32 {
         let ray_with_blockers = ray & blockers;
@@ -597,8 +632,9 @@ impl MoveValidator {
         moves.extend(self.get_pseudo_legal_pawn_moves(board, color));
         moves.extend(self.get_pseudo_legal_knight_moves(board, color));
         moves.extend(self.get_pseudo_legal_rook_moves(board, color));
-        moves.extend(self.get_pseudo_legal_king_moves(board, color));
         moves.extend(self.get_pseudo_legal_bishop_moves(board, color));
+        moves.extend(self.get_pseudo_legal_queen_moves(board, color));
+        moves.extend(self.get_pseudo_legal_king_moves(board, color));
 
         moves
     }
