@@ -184,6 +184,82 @@ const WEST_RAYS: [u64; 64] = {
     rays
 };
 
+// Northeast rays (up-right movement)
+const NORTH_EAST_RAYS: [u64; 64] = {
+    let mut rays = [0u64; 64];
+    for sq in 0..64 {
+        let mut ray = 0u64;
+        let mut bit = 1u64 << sq;
+        let file = sq % 8;
+        let mut rank_file = (sq / 8, file);
+
+        while rank_file.0 < 7 && rank_file.1 < 7 {
+            bit <<= 9; // Move up one rank and one file right
+            ray |= bit;
+            rank_file = (rank_file.0 + 1, rank_file.1 + 1);
+        }
+        rays[sq] = ray;
+    }
+    rays
+};
+
+// Northwest rays (up-left movement)
+const NORTH_WEST_RAYS: [u64; 64] = {
+    let mut rays = [0u64; 64];
+    for sq in 0..64 {
+        let mut ray = 0u64;
+        let mut bit = 1u64 << sq;
+        let file = sq % 8;
+        let mut rank_file = (sq / 8, file);
+
+        while rank_file.0 < 7 && rank_file.1 > 0 {
+            bit <<= 7; // Move up one rank and one file left
+            ray |= bit;
+            rank_file = (rank_file.0 + 1, rank_file.1 - 1);
+        }
+        rays[sq] = ray;
+    }
+    rays
+};
+
+// Southeast rays (down-right movement)
+const SOUTH_EAST_RAYS: [u64; 64] = {
+    let mut rays = [0u64; 64];
+    for sq in 0..64 {
+        let mut ray = 0u64;
+        let mut bit = 1u64 << sq;
+        let file = sq % 8;
+        let mut rank_file = (sq / 8, file);
+
+        while rank_file.0 > 0 && rank_file.1 < 7 {
+            bit >>= 7; // Move down one rank and one file right
+            ray |= bit;
+            rank_file = (rank_file.0 - 1, rank_file.1 + 1);
+        }
+        rays[sq] = ray;
+    }
+    rays
+};
+
+// Southwest rays (down-left movement)
+const SOUTH_WEST_RAYS: [u64; 64] = {
+    let mut rays = [0u64; 64];
+    for sq in 0..64 {
+        let mut ray = 0u64;
+        let mut bit = 1u64 << sq;
+        let file = sq % 8;
+        let mut rank_file = (sq / 8, file);
+
+        while rank_file.0 > 0 && rank_file.1 > 0 {
+            bit >>= 9; // Move down one rank and one file left
+            ray |= bit;
+            rank_file = (rank_file.0 - 1, rank_file.1 - 1);
+        }
+        rays[sq] = ray;
+    }
+    rays
+};
+
 
 
 pub(crate) struct MoveValidator {
@@ -429,6 +505,36 @@ impl MoveValidator {
         moves
     }
 
+    fn get_pseudo_legal_bishop_moves(&self, board: &Board, color: Color) -> Vec<Move> {
+        let mut moves = Vec::new();
+
+        // Get the appropriate bishop bitboard and enemy pieces based on color
+        let (mut bishops, enemy_pieces) = match color {
+            Color::White => (board.white_bishops, board.black_pieces()),
+            Color::Black => (board.black_bishops, board.white_pieces()),
+        };
+
+        let all_pieces = board.all_pieces();
+
+        // Iterate through each bishop position
+        while bishops != 0 {
+            let from = bishops.trailing_zeros() as u8;
+            bishops &= bishops - 1; // Clear the least significant bit
+
+            // Generate moves for each diagonal ray direction (NE, NW, SE, SW)
+            for &ray in &[
+                NORTH_EAST_RAYS[from as usize],
+                NORTH_WEST_RAYS[from as usize],
+                SOUTH_EAST_RAYS[from as usize],
+                SOUTH_WEST_RAYS[from as usize],
+            ] {
+                self.add_ray_moves(ray, all_pieces, enemy_pieces, from, &mut moves);
+            }
+        }
+
+        moves
+    }
+
     // Helper method to add moves along a ray
     fn add_ray_moves(&self, ray: u64, all_pieces: u64, enemy_pieces: u64, from: u8, moves: &mut Vec<Move>) {
         // Find blockers along this ray
@@ -488,19 +594,11 @@ impl MoveValidator {
     fn get_pseudo_legal_moves(&self, board: &Board, color: Color) -> Vec<Move> {
         let mut moves = Vec::new();
 
-        // Add pawn moves
         moves.extend(self.get_pseudo_legal_pawn_moves(board, color));
-
-        // Add knight moves
         moves.extend(self.get_pseudo_legal_knight_moves(board, color));
-
-        // Add rook moves
         moves.extend(self.get_pseudo_legal_rook_moves(board, color));
-
-        // Add king moves
         moves.extend(self.get_pseudo_legal_king_moves(board, color));
-
-        // TODO: Add bishop and queen moves
+        moves.extend(self.get_pseudo_legal_bishop_moves(board, color));
 
         moves
     }
